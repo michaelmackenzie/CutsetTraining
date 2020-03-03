@@ -1,8 +1,4 @@
-
 #include "cutset_training/CutsetTrainer.hh"
-// #include "CutsetTrainerLinkDef.hh"
-
-ClassImp(CutsetTrainer) 
 
 //trains the cut parameters in given step sizes to loss given
 int CutsetTrainer::Train() {
@@ -73,14 +69,14 @@ double CutsetTrainer::CutStep() {
       else if ((nInit-npassed)*1./n > stepSize_) mx = (maxVal[i]+mx)/2.;
       else if ((nInit-npassed)*1./n < stepSize_) maxVal[i] = (maxVal[i]+mx)/2.;
       //add a detailed printout for ones going high in attempts
-      if(tries == 14 && verbose_ > 2) printf("Try %i current mx %.3e  maxVal %.3e, nInit %.0f npassed %.0f done = %d, maxTries = %i\n",
+      if(tries%15 == 0 && verbose_ > 2) printf("Try %i current mx %.3e  maxVal %.3e, nInit %.0f npassed %.0f done = %d, maxTries = %i\n",
                                                tries, mx, maxVal[i], nInit, npassed, done, maxTries);
       //if maxing out, take the overshoot to avoid never taking a step with discrete variables
       if (tries >= maxTries) {
         if(verbose_ > 0) printf("Maximum tries for variable %s, continuing with current cut param\n", variables_[i].Data());
         maxVal[i] = mx; done = true;} //decide whether or not to side to mx      
     }
-    if(verbose_ > 1) printf("Finding max edge of %.3e took %i tries\n",mx,tries);
+    if(verbose_ > 1) printf("Finding max edge = %.3e took %i tries\n",mx,tries);
     done = false;
     tries = 0;
     //repeat the same process, but looking at cutting on the lower bound
@@ -133,7 +129,9 @@ double CutsetTrainer::CutStep() {
     cutBkg += bkgID_.Data();
 
     double npassedB = GetNumPass(cutBkg, bkgTree_,bkgWeight_);
-    double frac = (npassedB == 0) ? npassed*1.e9 : npassed / npassedB;
+    // double frac = (npassedB == 0) ? npassed*1.e9 : npassed / npassedB;
+    double frac = EvaluateFunction(npassed, npassedB);
+    if(verbose_ > 1) printf("Cut %s has function value %.4e from below\n", variables_[i].Data(), frac);
 
     //compare nSig/nBkg to previous ratios, save if best so far
     if(frac > fracBest) {
@@ -161,7 +159,8 @@ double CutsetTrainer::CutStep() {
     if(bkgID_ != "") cutBkg+="&&";
     cutBkg += bkgID_.Data();
     npassedB = GetNumPass(cutBkg, bkgTree_,bkgWeight_);
-    frac = (npassedB == 0) ? npassed*1.e9 : npassed / npassedB; //if 0, save one with most npassed
+    frac = EvaluateFunction(npassed, npassedB);
+    if(verbose_ > 1) printf("Cut %s has function value %.4e from above\n", variables_[i].Data(), frac);
 
     //compare nSig/nBkg to previous ratios, save if best so far
     if(frac > fracBest) {
@@ -183,59 +182,64 @@ double CutsetTrainer::CutStep() {
     cutMin_[varBest] = 1;
   } else return -1.;
   BuildCutString();
-  if(verbose_ > 0) printf("Signal / Background = %.4e (%.1f / %.1f)\n", fracBest, nPassS, nPassB);
+  if(verbose_ > 0) printf("%s = %.4e (signal = %.3e, background = %.3e)\n", function_.Data(), fracBest, nPassS, nPassB);
   //add efficiencies to the ROC curve
   sigEff_.push_back(nPassS/n);
   double nB = GetNumPass(bkgID_, bkgTree_, bkgWeight_); //initial number
   bkgEff_.push_back(1.-nPassB/nB);
-  if(verbose_ > 0) printf("Signal Efficiency = %.4e (%.1f / %.1f) Background efficiency = %.4e (1 - %.1f / %.1f)\n", 
+  if(verbose_ > 0) printf("Signal Efficiency = %.4e (%.3e / %.3e) Background rejection = %.4e (1 - %.3e / %.3e)\n", 
 			  nPassS/n, nPassS, n, 1.-nPassB/nB, nPassB, nB );
   cutPath_.push_back(cuts_);
+  functionVals_.push_back(fracBest); //record function vs cuts
+
   return fracStep;
 }
 
-// char* CutsetTrainer::GetCutStr(int var, double val, int maxOrMin) {
-//   TString cut;
-//   cut += variables_[var];
-//   cut += (maxOrMin > 0) ? "<" : ">";
-//   cut += val;
-//   return cut.Data();
-// }
-
 double  CutsetTrainer::GetNumPass(TString selection, TTree* tree, TString func) {
   TFile* tmpFile = new TFile("CutsetTrainer_tmp_file.root","RECREATE");
-  TCut cut(selection);
+  TString cutstring = selection;
+  if(func != "") {
+    if(cutstring != "") cutstring = Form("%s*(%s)",func.Data(),selection.Data());
+    else cutstring = func;
+  }
+  TCut cut(cutstring);
   while(true) {
-    TObject* o = gDirectory->Get("ttemp");
+    TObject* o = gDirectory->Get("hist");
     if(!o) 
       break;
     else
       delete o;
   }
-  TTree* ttemp = tree->CopyTree(cut);
-  ttemp->SetName("ttemp");
-  double n = 0.;
-  if(func == "") n = ttemp->GetEntriesFast(); 
-  else {
-    TString drawOpt(func);
-    while(true) {
-      TObject* o = gDirectory->Get("hist");
-      if(!o) 
-	break;
-      else
-	delete o;
-    }
-    drawOpt += ">>hist";
-    ttemp->Draw(drawOpt.Data());
-    TH1F* hist = (TH1F*) gDirectory->Get("hist");
-    hist->SetName("hist");
-    n = hist->Integral();
-    n *= hist->GetMean();
-    delete hist;
+  tree->Draw(Form("%s>>hist", variables_[0].Data()), cut);
+  TH1F* hist = (TH1F*) gDirectory->Get("hist");
+  if(!hist) {
+    printf("Failed to find %s weighted num pass histogram!", func.Data());
+    return -1.;
   }
-  delete ttemp;
+  hist->SetName("hist");
+  double n = hist->Integral();
+  n *= lum_;
+  delete hist;
   delete tmpFile;
   return n;
+}
+
+double CutsetTrainer::EvaluateFunction(double nsignal, double nbackground) {
+  double val = -1.;
+  if(function_ == "s/b") {
+    if(nbackground > 0.) val = nsignal/nbackground;
+    else return 1.e9*nsignal;
+  } else if(function_ == "significance") {
+    if(nsignal > 0. || nbackground > 0.) val = nsignal/sqrt(nsignal + nbackground);
+    else val = -1.;
+  } else if(function_ == "limit") {
+    if(nbackground > 0.) val = nsignal/sqrt(nbackground);
+    else val = 1.e9*nsignal;
+  }  else {
+    printf("Unknown optimizing function = %s!\n", function_.Data());
+    val = -1.;
+  }
+  return val;
 }
 
 void CutsetTrainer::BuildCutString() {
@@ -281,9 +285,13 @@ int CutsetTrainer::GetMaxMin() {
     mn[i] =  1.e9;
     vars[i] = 0.;
     int status = ttemp->SetBranchAddress(variables_[i].Data(), &(vars[i]));
-    if(status != 0) return i+1;
+    if(status != 0) {
+      if(verbose_ > 0) printf("GetMaxMin: Failed to find branch address %s!\n", variables_[i].Data());
+      return i+1;
+    }
   }
   Long64_t n = ttemp->GetEntriesFast();
+  if(verbose_ > 2) printf("GetMaxMin: Signal tree has %lld entries\n", n);
   for(Long64_t j = 0; j < n; ++j) {
     ttemp->GetEntry(j);
     for(int i = 0; i < int(variables_.size()); ++i) {
@@ -313,10 +321,29 @@ TCanvas* CutsetTrainer::PlotROC() {
     y[i] = bkgEff_[i];
   }
   roc_ = new TGraph(n,x,y);
-  TCanvas* c = new TCanvas("ROC Canvas");
+  roc_->SetName("ROC_Graph");
+  TCanvas* c = new TCanvas("ROC_Canvas","ROC Canvas");
   roc_->Draw();
   roc_->SetLineColor(kBlue);
-  roc_->SetLineWidth(2);
+  roc_->SetLineWidth(3);
   roc_->SetTitle("Rectangular Cuts ROC;Signal Efficiency;Background Rejection");
+  return c;
+}
+
+TCanvas* CutsetTrainer::PlotFunction() {
+  int n = sigEff_.size();
+  if(n == 0) return NULL;
+  Double_t x[n],y[n]; 
+  for(int i = 0; i < n; ++i) {
+    x[i] = sigEff_[i];
+    y[i] = functionVals_[i];
+  }
+  func_ = new TGraph(n,x,y);
+  func_->SetName("Function_Graph");
+  TCanvas* c = new TCanvas("Function_Canvas","Function Canvas");
+  func_->Draw();
+  func_->SetLineColor(kBlue);
+  func_->SetLineWidth(3);
+  func_->SetTitle(Form("Optimizing %s;Signal Efficiency;%s", function_.Data(), function_.Data()));
   return c;
 }

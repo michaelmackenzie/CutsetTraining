@@ -1,6 +1,10 @@
 *~
 \#*
 *.save
+*_cc.d
+*_cc_*.pcm
+scripts/training_*.txt
+
 BaBar/BField/
 BaBar/BaBar/
 BaBar/BbrGeom/
