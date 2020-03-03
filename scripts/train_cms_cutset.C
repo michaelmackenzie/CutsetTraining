@@ -5,13 +5,13 @@ namespace {
   Double_t signal_fraction_ = 0.5; //fraction of events to train with
   Double_t background_fraction_ = 0.5; //fraction of events to train with
   Int_t verbosity_ = 1;
-  TString function_ = "significance"; //function to optimize
+  TString function_ = "limit"; //function to optimize
   Double_t lum_ = 35.922e3; //luminosity for significance/limits
 };
 
 
 CutsetTrainer* train_cutset(const char* tree_name = "background_ztautau_Z0_mutau_8.tree", double endloss = 0.2, double step = 0.0025,
-			    double tolerance = 0.0005, vector<int> signal_ids= {33,34,35, 36, 37, 38, 39}) {
+			    double tolerance = 0.0005, vector<int> signal_ids= {33, 34, 35, 36, 37, 38}) {
 
   TString name; //name of output file
   TString x = tree_name;
@@ -21,6 +21,10 @@ CutsetTrainer* train_cutset(const char* tree_name = "background_ztautau_Z0_mutau
 
   f = TFile::Open(Form("%s%s",folder_.Data(),tree_name), "READ");
 
+  if(!f) {
+    printf("File %s%s not found\n", folder_.Data(), tree_name);
+    return NULL;
+  }
   
   TTree* tree;
   int isData = 0;
@@ -128,11 +132,11 @@ CutsetTrainer* train_cutset(const char* tree_name = "background_ztautau_Z0_mutau
   varStatus = trainer->AddVariable("leptwopt") || varStatus;
   varStatus = trainer->AddVariable("leppt") || varStatus;
   // varStatus = trainer->AddVariable("njets") || varStatus; //makes very large steps sometimes due to integer values
-  varStatus = trainer->AddVariable("lepmestimate") || varStatus;
-  varStatus = trainer->AddVariable("onemetdeltaphi") || varStatus;
+  if(selection.Contains("tau"))  varStatus = trainer->AddVariable("lepmestimate") || varStatus;
+  varStatus = trainer->AddVariable("twometdeltaphi") || varStatus;
   varStatus = trainer->AddVariable("leponedeltaphi") || varStatus;
   varStatus = trainer->AddVariable("leptwodeltaphi") || varStatus;
-  varStatus = trainer->AddVariable("ht") || varStatus;
+  if(selection.Contains("h")) varStatus = trainer->AddVariable("ht") || varStatus;
 
   trainer->tolerance_ = tolerance;
   trainer->stepSize_ = step;
@@ -146,15 +150,23 @@ CutsetTrainer* train_cutset(const char* tree_name = "background_ztautau_Z0_mutau
     printf("Final trainer cuts = %s\n", trainer->cuts_.Data());
     TFile* outroot = new TFile((name+".root").Data(),"RECREATE"); //needed to not only create trees in memory
     TCanvas* croc = trainer->PlotROC();
+    croc->SetWindowSize(800.,500.);
+    croc->Print(Form("figures/%s_ROC.png", name.Data()));
     croc->Write();
     TCanvas* cfunc = trainer->PlotFunction();
+    cfunc->SetWindowSize(800.,500.);
+    cfunc->Print(Form("figures/%s_%s.png", name.Data(), function_.Data()));
     cfunc->Write();
     outroot->Write();
     ofstream outfile;
     outfile.open ((name+".txt").Data());
     vector<TString> cutPath = trainer->cutPath_;
     for(int i = 0; i < cutPath.size(); ++i) {
-      outfile << cutPath[i] << std::endl;
+      outfile << cutPath[i] << ", "
+	      << trainer->functionVals_[i] << ", "
+	      << trainer->sigEff_[i] << ", "
+	      << trainer->bkgEff_[i]
+	      << std::endl;
     }
     outfile.close();
   } else 

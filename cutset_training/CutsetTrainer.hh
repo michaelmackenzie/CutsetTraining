@@ -16,6 +16,7 @@
 #include "TString.h"
 #include "TCanvas.h"
 #include "TStopwatch.h"
+#include "Math/ProbFuncMathCore.h"
 
 class CutsetTrainer : public TObject {
 public:

@@ -232,8 +232,24 @@ double CutsetTrainer::EvaluateFunction(double nsignal, double nbackground) {
   } else if(function_ == "significance") {
     if(nsignal > 0. || nbackground > 0.) val = nsignal/sqrt(nsignal + nbackground);
     else val = -1.;
-  } else if(function_ == "limit") {
-    if(nbackground > 0.) val = nsignal/sqrt(nbackground);
+  } else if(function_ == "limitApprox") {
+    if(nbackground > 0.) val = nsignal/sqrt(nbackground)/1.64485;
+    else val = 1.e9*nsignal;
+  } else if(function_ == "limit") { //round background down, as n <= nbackground
+    if(nbackground > 0.) {
+      double p = 0.05; //confidence limit goal
+      double tolerance = 0.001; //precision to achieve for goal confidence level
+      double scale = 1.; //scale signal until achieve tolerance
+      // double lastVal = -1.; //for searching
+      // double lastScale = -1.;
+      while(abs(val - p) > tolerance) { //guess scale factors until close to limit goal
+	val = ROOT::Math::poisson_cdf((int) (nbackground), nbackground + nsignal*scale); //confidence limit at this value	
+	if(verbose_ > 5) printf("Loop for limit: val = %.3e scale = %.3e\n", val, scale);
+	if(abs(val-p) > tolerance) //only update if still not succeeding
+	  scale *= (val/p < 4.) ? (1.-p)/(1.-val) : sqrt(nbackground)*1.64485/nsignal; //if far, start with this scale
+      }
+      val = 1./scale;
+    }
     else val = 1.e9*nsignal;
   }  else {
     printf("Unknown optimizing function = %s!\n", function_.Data());
