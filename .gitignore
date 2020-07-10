@@ -5,6 +5,11 @@
 *_cc_*.pcm
 scripts/training_*.txt
 
+*.png
+*.jpg
+*.svm
+*.pdf
+
 BaBar/BField/
 BaBar/BaBar/
 BaBar/BbrGeom/
