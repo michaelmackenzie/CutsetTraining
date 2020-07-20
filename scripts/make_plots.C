@@ -2,7 +2,8 @@
 namespace {
   const char* fn_dar_roc_em_0_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/rootFiles/cutset_training_dar_em_BkgWeight0.root";
   const char* fn_dar_roc_em_2_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/rootFiles/cutset_training_dar_em_BkgWeight2.root";
-  const char* fn_dar_roc_ep_0_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/rootFiles/cutset_training_dar_ep_BkgWeight0.root";
+  // const char* fn_dar_roc_ep_0_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/rootFiles/cutset_training_dar_ep_BkgWeight0.root";
+  const char* fn_dar_roc_ep_0_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/cutset_training_dar_ep_BkgWeight0.root";
   const char* fn_dar_roc_ep_2_cut = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/cutset_training/scripts/rootFiles/cutset_training_dar_ep_BkgWeight2.root";
 
   const char* fn_dar_roc_em_0_mva = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/tmva_training/dar_e-_chi2d_BkgWeight0_tmva.root";
@@ -161,23 +162,28 @@ TCanvas* plot_roc(const char* Signal = "ep", const char* Resolver = "dar", int b
   }
 
   TCanvas* c = (TCanvas*) fCut->Get("ROC Canvas");
-  c->SetName("ROC_Canvas");
-  c->SetWindowSize(1000,600);
-  TGraph* g = (TGraph*) c->GetPrimitive("Graph");
   c->Draw();
+  c->SetName("ROC_Canvas");
+  c->SetWindowSize(900,500);
+  c->Update();
+  TGraph* g = (TGraph*) c->GetPrimitive("Graph");
+  
   TFile* f = (TFile*) ((TFile*) fMVA->Get("Method_MLP"))->Get("MLP");
   TH1D* hMVA = (TH1D*) f->Get("MVA_MLP_rejBvsS");
   hMVA->Draw("same C");
   hMVA->SetLineColor(kRed);
   hMVA->SetLineWidth(2);
   gStyle->SetOptStat(0);
-  g->SetTitle("ROC;Signal Efficiency;Background Rejection");
+  g->SetTitle(";Signal Efficiency;Background Rejection");
+  g->GetXaxis()->SetTitleSize(0.05);
+  g->GetYaxis()->SetTitleSize(0.05);
+  g->GetXaxis()->SetRangeUser(0.2, 0.4);
   c->SetGridx();
   c->SetGridy();
 
   TLegend* legend = new TLegend();
-  legend->AddEntry(hMVA,"MLP");
-  legend->AddEntry(g,"Cut");
+  legend->AddEntry(hMVA,"ANN");
+  legend->AddEntry(g,"Box Cut");
   legend->Draw();
   c->Print(Form("%s_%s_BkgWeight_%i_ROC.png",res.Data(),sig.Data(),bkg_weight));
   return c;
