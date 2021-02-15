@@ -1,127 +1,273 @@
+#include "su2020/ana/scripts/DataPlotter.C"
+#include "su2020/ana/scripts/Parameters.C"
+#include "su2020/ana/scripts/init_datasets.C"
 
+TFile* tmp_file_;
+CutsetTrainer* trainer_;
 
-namespace {
-  const char* fn_par_em = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/tmva_training/datasets/e21s721z.tmva_training_trkpatrec.root";
-  const char* fn_dar_em = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/tmva_training/datasets/e21s721z.tmva_training_calpatrec.root";
-  const char* fn_par_ep = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/tmva_training/datasets/e41s721z.tmva_training_trkpatrec.root";
-  const char* fn_dar_ep = "/mu2e/app/users/mmackenz/mdc2018/MMAnalysis/tmva_training/datasets/e41s721z.tmva_training_calpatrec.root";
-};
+DataPlotter* dataplotter_ = 0;
+TString path_ = "/mu2e/data/users/mmackenz/su2020/su2020/histograms/"; //path to histogram directory
+int test_training_ = 0;
 
-
-//-----------------------------------------------------------------------------
-// Algorithm    : "trkpatrec" or "calpatrec"
-// TrainingMode : "chi2d" or "logfcons"
-// BkgWeight    : 0,1,2,3,4  (+100 if use  Z)
-//-----------------------------------------------------------------------------
-CutsetTrainer* train_cutset(const char* Algorithm = "DAR", const char* Signal = "ep", int bkgWeight = 0, double endloss = 0.2, double step = 0.0025, double tolerance = 0.0005, int oneVar = 0) {
-
-  //  gDirectory->CurrentDirectory()->pwd();
-  TString tmvaName, alg, sig;
-
-  alg = Algorithm;
-  alg.ToLower();
-  sig = Signal;
-  sig.ToLower();
-
-  TString outName = "cutset_training_";
-  outName += alg;
-  outName += "_";
-  outName += sig;
-  outName += "_BkgWeight";
-  outName += bkgWeight;
-  TFile* outf = new TFile("train_tmp.root","RECREATE"); //needed to not only create trees in memory
-
-  TString fname;
-  if(sig == "em") {
-    if      (alg == "par") fname = fn_par_em;
-    else if (alg == "dar") fname = fn_dar_em;
+//load data cards into the DataPlotter
+int init_dataplotter() {
+  std::vector<DataCard_t> cards;
+  //constructor:            isOneBatch        fname                       fpath                      label                scale                      isSignal isBeam  color  setOffset
+  if(test_training_ == 0) {
+    cards.push_back(DataCard_t(true ,path_+get_file_name("rpce", 1), "Ana/su2020_RPCAna/Hist"   , "RPC(External)", get_normalization("rpce" , 1,  true), false, true , kGreen-2 ,-10));
+    cards.push_back(DataCard_t(false,path_+get_file_name("rpce", 1), "Ana/su2020_RPCAna/Hist"   , "RPC(External)", get_normalization("rpce" , 1,  true), false, true , kGreen-2 ,-9));
+    cards.push_back(DataCard_t(true ,path_+get_file_name("rpci", 1), "Ana/su2020_RPCAna/Hist"   , "RPC(Internal)", get_normalization("rpci" , 1,  true), false, true , kGreen-4 ,-10));
+    cards.push_back(DataCard_t(false,path_+get_file_name("rpci", 1), "Ana/su2020_RPCAna/Hist"   , "RPC(Internal)", get_normalization("rpci" , 1,  true), false, true , kGreen-4 ,-9));
+    cards.push_back(DataCard_t(true ,path_+get_file_name("cosm", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(lo)"   , get_normalization("cosm" , 1,  true), false, false, kYellow+1, 2));
+    cards.push_back(DataCard_t(false,path_+get_file_name("cosm", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(lo)"   , get_normalization("cosm" , 2,  true), false, false, kYellow+1, 2));
+    cards.push_back(DataCard_t(true ,path_+get_file_name("cry3", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(hi)"   , get_normalization("cry3" , 1,  true), false, false, kOrange+1, 2));
+    cards.push_back(DataCard_t(false,path_+get_file_name("cry3", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(hi)"   , get_normalization("cry3" , 2,  true), false, false, kOrange+1, 2));
+    if(doPositron_) {
+      cards.push_back(DataCard_t(true ,path_+get_file_name("rmce", 1), "Ana/su2020_RMCAna/Hist"   , "RMC(External)", get_normalization("rmce", 1, false), false, true , kRed+2      ));
+      cards.push_back(DataCard_t(false,path_+get_file_name("rmce", 1), "Ana/su2020_RMCAna/Hist"   , "RMC(External)", get_normalization("rmce", 1, false), false, true , kRed+2   , 1));
+      cards.push_back(DataCard_t(true ,path_+get_file_name("rmci", 1), "Ana/su2020_RMCAna/Hist"   , "RMC(Internal)", get_normalization("rmci", 1, false), false, true , kRed        ));
+      cards.push_back(DataCard_t(false,path_+get_file_name("rmci", 1), "Ana/su2020_RMCAna/Hist"   , "RMC(Internal)", get_normalization("rmci", 1, false), false, true , kRed     , 1));
+    }
   }
-  else if (sig == "ep") {
-    if      (alg == "par") fname = fn_par_ep;
-    else if (alg == "dar") fname = fn_dar_ep;
+
+  if(test_training_ == 2) {
+    if(!doPositron_) {
+      cards.push_back(DataCard_t(true ,path_+get_file_name("dio_100k" , 1), "Ana/su2020_TrackAna/Hist" , "DIO"     , 3746065./1.e5*get_normalization("dio"  , 1, false), false, true , kViolet-2,0));
+    }
+    cards.push_back(DataCard_t(true ,path_+get_file_name("cosm_100k", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(lo)", 429535./1.e5*get_normalization("cosm" , 1,  true), false, false, kYellow+1, 0));
+    cards.push_back(DataCard_t(true ,path_+get_file_name("cry3_100k", 0), "Ana/su2020_CosmicAna/Hist", "Cosmic(hi)", 1174968./1.e5*get_normalization("cry3" , 1,  true), false, false, kOrange+1, 0));
+  }
+  if(doPositron_) {
+    cards.push_back(DataCard_t(true ,path_+get_file_name("cpos", 1), "Ana/su2020_ConvAna/Hist" , "#mu^{-}#rightarrow e^{+}", get_normalization("cpos" , 1), true , true , kBlue));
+    cards.push_back(DataCard_t(false,path_+get_file_name("cpos", 1), "Ana/su2020_ConvAna/Hist" , "#mu^{-}#rightarrow e^{+}", get_normalization("cpos" , 1), true , true , kBlue, 1));
   } else {
-    printf("Combination %s + %s not yet defined, exiting\n", alg.Data(), sig.Data());
-    return NULL;
+    if(test_training_ < 2) {
+      cards.push_back(DataCard_t(true ,path_+get_file_name("cele", 1), "Ana/su2020_ConvAna/Hist" , "#mu^{-}#rightarrow e^{-}", get_normalization("cele" , 1), true , true , kBlue));
+      cards.push_back(DataCard_t(false,path_+get_file_name("cele", 2), "Ana/su2020_ConvAna/Hist" , "#mu^{-}#rightarrow e^{-}", get_normalization("cele" , 2), true , true , kBlue));
+    } else {
+      cards.push_back(DataCard_t(true ,path_+get_file_name("cele_100k", 1), "Ana/su2020_ConvAna/Hist" , "#mu^{-}#rightarrow e^{-}", 378233./1.e5*get_normalization("cele" , 1), true , true , kBlue));
+    }
   }
+  if(dataplotter_) delete dataplotter_;
+  dataplotter_ = new DataPlotter();
+  Parameters params(doPositron_); //Running parameters
+  dataplotter_->lumi_[0]     = params.one_batch_pot*(do_batch_mode_ != 2); //one batch
+  dataplotter_->lumi_[1]     = params.two_batch_pot*(do_batch_mode_ != 1); //two batch
+  // const double cycle_1batch  = 1.33; //seconds
+  // const double pot_1batch    = 4.e12; //pot/cycle
+  // const double cycle_2batch  = 1.4; //seconds
+  // const double pot_2batch    = 8.e12; //pot/cycle
+  dataplotter_->livetime_[0] = params.one_batch_sec; //dataplotter_->lumi_[0]/pot_1batch*cycle_1batch;
+  dataplotter_->livetime_[1] = params.two_batch_sec; //dataplotter_->lumi_[1]/pot_2batch*cycle_2batch;
 
-  TFile*  f = TFile::Open(fname.Data(),"READ");
+  return dataplotter_->AddFiles(cards);
+}
 
-  printf("*** Loading original tree\n");
-  f->cd();
-  TTree* t = (TTree*) f->Get("tmva_training_tree")->Clone("Dataset");
-  Long64_t n = t->GetEntriesFast();
-  outf->cd();
-  if(!t) {
-    printf("Tree not found, exiting\n");
-    return NULL;
+//add a branch with the normalization included in the weight
+int add_normalized_weight(TTree *&tree, float norm) {
+  tmp_file_->cd();
+  tmp_file_->Add(tree);
+  Long64_t nentries = tree->GetEntriesFast();
+  Float_t fullweight, eventweight;
+  if(!tree->GetBranch("weight")) return 1;
+  auto branch = tree->Branch("fullweight", &fullweight, 'F');
+  tree->SetBranchAddress("weight", &eventweight);
+  for(Long64_t entry = 0; entry < nentries; ++entry) {
+    tree->GetEntry(entry,1);
+    fullweight = norm*eventweight;
+    branch->Fill();
   }
-  t->SetName("Dataset");
+  tree->Write();
+  tree->SetBranchStatus("*", 1);
+  tmp_file_->Write();
+  return 0;
+}
 
+//get the signal and background trees, merging them
+int initialize_trees(TTree *&signal_tree, TTree *&background_tree) {
+  printf("*** Loading trees\n");
+  TList* signal_list = new TList;
+  TList* background_list = new TList;
+  tmp_file_->cd();
+  int trk_set = (doPositron_) ? 4024 : 2024;
+  TTree* trees[dataplotter_->files_.size()];
+  for(unsigned idata = 0; idata < dataplotter_->files_.size(); ++idata) {
+    if(do_batch_mode_ > 0 && do_batch_mode_ != 2-dataplotter_->isOneBatch_[idata]) continue;
+    if(verbose_ > 0) cout << "*** Loading tree for dataset " << idata << " = " << dataplotter_->labels_[idata].Data()
+                          << endl;
+    int i_trk_set = trk_set+dataplotter_->setOffsets_[idata];
+    TTree* tree = (TTree*) dataplotter_->files_[idata]->Get(Form("trk_%i/tracktree_%i", i_trk_set, i_trk_set));
+    if(!tree) {
+      cout << "!!! Tree for dataset " << idata << " = " << dataplotter_->labels_[idata].Data()
+           << " is not found!\n";
+      return idata+1;
+    }
+    tmp_file_->cd();
+    TTree* tree_clone = tree->CloneTree(); tree_clone->SetName(Form("tree_%i", idata));
+    tmp_file_->Add(tree_clone);
 
-  TString sCut = "(p-pmc)<0.25&&(p-pmc)>-0.25";
-  if(sig == "ep") sCut += "&&(pmc>87)";
-  if(sig == "em") sCut += "&&(pmc>100)&&(tdip>0.57)&&(tdip<1.0)";
-  printf("*** Identifying signal tree\n");
-  TTree* tsignal = t->CopyTree(sCut.Data(),"",n/12.);//n/12.);
-  tsignal->SetName("signal");
-  TString bCut = "(p-pmc)>0.7";
-  if(sig == "ep") bCut += "&&(pmc>87)";
-  if(sig == "em") bCut += "&&(pmc>100)&&(tdip>0.57)&&(tdip<1.0)";
-  printf("*** Identifying background tree\n");
-  TTree* tbackground = t->CopyTree(bCut.Data(),"",n/2.);
-  tbackground->SetName("background");
+    float norm = dataplotter_->scales_[idata];
+    if(dataplotter_->isBeam_[idata]) norm *= dataplotter_->lumi_[1-dataplotter_->isOneBatch_[idata]];
+    else                             norm *= dataplotter_->livetime_[1-dataplotter_->isOneBatch_[idata]];
+    if(verbose_ > 0) cout << "*** Adding full event weights to the tree with " << tree_clone->GetEntriesFast()
+                          << " using norm = " << norm << endl;
+    if(add_normalized_weight(tree_clone, norm)) {
+      cout << "!!! Tree for dataset " << idata << " = " << dataplotter_->labels_[idata].Data()
+           << " failed to add full event weight!\n";
+      return idata+1;
+    }
+    tmp_file_->Flush();
+    tree_clone = (TTree*) tmp_file_->Get(tree_clone->GetName());
+    tmp_file_->Add(tree_clone);
+
+    if(dataplotter_->isSignal_[idata]) signal_list    ->Add(tree_clone);
+    else                               background_list->Add(tree_clone);
+    trees[idata] = tree_clone;
+  }
+  if(signal_list->GetEntries() > 0) {
+    if(verbose_ > 0) cout << "*** Merging signal trees...\n";
+    signal_tree = TTree::MergeTrees(signal_list);
+    if(!signal_tree) {
+      cout << "!!! Signal tree merging failed!\n";
+      return 1;
+    }
+    signal_tree->SetName("signal_tree");
+    if(!signal_tree->GetBranch("fullweight")) {
+      cout << "!!! Full event weight branches not properly defined!\n";
+      signal_tree->Print();
+      return 3;
+    } else {
+      for(auto obj : *signal_list) delete obj;
+    }
+  } else return 1;
+  if(background_list->GetEntries() > 0) {
+  if(verbose_ > 0) cout << "*** Merging background trees...\n";
+    background_tree = TTree::MergeTrees(background_list);
+    if(!background_tree) {
+      cout << "!!! Background tree merging failed!\n";
+      return 1;
+    }
+    background_tree->SetName("background_tree");
+    if(!background_tree->GetBranch("fullweight")) {
+      cout << "!!! Full event weight branches not properly defined!\n";
+      background_tree->Print();
+      return 4;
+    } else {
+      for(auto obj : *background_list) delete obj;
+    }
+  } else return 2;
+  return 0;
+}
+
+CutsetTrainer* train_cutset(bool positron = false,
+                            int bkgWeight = 0, double endloss = 0.2,
+                            double step = 0.02, double tolerance = 0.01,
+                            TString tag = "111111") {
+
+  test_training_ = 2;
+  do_batch_mode_ = 1;
+  doPositron_ = positron;
+
+  //initialize the DataPlotter to store files and normalizations
+  if(init_dataplotter()) return NULL;
+
+  TString sig = (doPositron_) ? "positron_" : "electron_";
+  TString outName = "cutset_training_" + sig + "_BkgWeight_";
+  outName += bkgWeight;
+  outName += "_" + tag;
+
+  tmp_file_ = new TFile("TMP_train.root","RECREATE"); //needed to not only create trees in memory
+
+  TTree *t_signal, *t_background;
+  if(initialize_trees(t_signal, t_background)) return NULL;
+
+  cout << "*** Loaded signal tree with " << t_signal->GetEntriesFast()
+       << " entries and background tree with " << t_background->GetEntriesFast()
+       << endl;
+
 
   CutsetTrainer* trainer = new CutsetTrainer();
-   trainer->SetSigTree(tsignal);
-   // trainer->SetSigID(sCut);
+  trainer_ = trainer;
+  // trainer->function_ = "limitApprox"; //~signal/sqrt(background)
+  trainer->function_ = "FCDiscovery";
+  trainer->SetSigTree(t_signal);
+  // trainer->SetSigID(sCut);
 
-   trainer->SetBkgTree(tbackground);
-   // trainer->SetBkgID(sCut);
+  trainer->SetBkgTree(t_background);
+  // trainer->SetBkgID(sCut);
 
-  trainer->SetVerbose(1);
+  trainer->SetVerbose(10);
 
-  if(bkgWeight == 2) trainer->bkgWeight_ = "max(1.0,exp(2.0*min(p-pmc,3.0)))"; //exp weight
-  else               trainer->bkgWeight_ = ""; //unit weight
+  trainer->bkgWeight_ = "fullweight";
+  if(bkgWeight == 2) trainer->bkgWeight_ += "*max(1.0,exp(2.0*min(p-pfront,3.0)))"; //exp weight
 
-  int varStatus = trainer->AddVariable("momerr");
-  varStatus = trainer->AddVariable("nafract") || varStatus;
+  trainer->sigWeight_ = "fullweight";
 
-  if(oneVar == 0) {
-    varStatus = trainer->AddVariable("nactive") || varStatus;
-    varStatus = trainer->AddVariable("chi2d") || varStatus;
+  //add momentum window of interest
+  trainer->sigID_ = (doPositron_) ? "trkqual>-1&&t0>600&&p>89" : "p>102";
+  trainer->bkgID_ = (doPositron_) ? "trkqual>-1&&t0>600&&p>89" : "p>102";
 
-    varStatus = trainer->AddVariable("t0err") || varStatus;
-    varStatus = trainer->AddVariable("d0") || varStatus;
-    varStatus = trainer->AddVariable("rmax") || varStatus;
-    varStatus = trainer->AddVariable("nda_o_na") || varStatus;
-    varStatus = trainer->AddVariable("nza_o_na") || varStatus;
-    varStatus = trainer->AddVariable("nma_o_na") || varStatus;
-    // varStatus = trainer->AddVariable("tdip") || varStatus;
-  }
+  int varStatus = 0;
+  varStatus += trainer->AddVariable("p");
+  varStatus += trainer->AddVariable("trkqual");
+  varStatus += trainer->AddVariable("t0");
+  varStatus += trainer->AddVariable("d0");
+  varStatus += trainer->AddVariable("tdip");
+  varStatus += trainer->AddVariable("pid");
+
+  // varStatus += trainer->AddVariable("momerr");
+  // varStatus += trainer->AddVariable("nafract");
+  // varStatus += trainer->AddVariable("nactive");
+  // varStatus += trainer->AddVariable("chi2d");
+  // varStatus += trainer->AddVariable("t0err");
+  // varStatus += trainer->AddVariable("rmax");
+  // varStatus += trainer->AddVariable("nda_o_na");
+  // varStatus += trainer->AddVariable("nza_o_na");
+  // varStatus += trainer->AddVariable("nma_o_na");
+
   trainer->tolerance_ = tolerance;
   trainer->stepSize_ = step;
   trainer->endLoss_ = endloss;
-  trainer->sigWeight_="";
 
-  printf("signal has %lli entries and background has %lli entries\n",tsignal->GetEntries(),tbackground->GetEntries());
-  if(varStatus == 0) {
-    int status = trainer->Train();
-    printf("trainer status = %i\n", status);
-    trainer->BuildCutString();
-    printf("Final trainer cuts = %s\n", trainer->cuts_.Data());
-    TFile* outroot = new TFile((outName+".root").Data(),"RECREATE"); //needed to not only create trees in memory
-    TCanvas* c = trainer->PlotROC();
-    c->Write();
-    outroot->Write();
-    //    outfile->Close();
-    ofstream outfile;
-    outfile.open ((outName+".txt").Data());
-    vector<TString> cutPath = trainer->cutPath_;
-    for(int i = 0; i < cutPath.size(); ++i) {
-      outfile << cutPath[i] << std::endl;
-    }
-    outfile.close();
-  } else 
-    printf("Variable selection failed with status = %i\n", varStatus);
+  if(varStatus) {
+    cout << "!!! Trainer variable definition returned a total status of " << varStatus
+         << " --> exiting!\n";
+    return trainer;
+  }
+
+  cout << "*** Trainer variables defined, beginning training!\n";
+  int status = trainer->Train();
+
+  //Print final cuts
+  printf("trainer status = %i\n", status);
+  trainer->BuildCutString();
+  printf("Final trainer cuts = %s\n", trainer->cuts_.Data());
+
+  //Write out the ROC plot
+  TCanvas* c = trainer->PlotROC();
+  TFile* outroot = new TFile((outName+".root").Data(),"RECREATE"); //needed to not only create trees in memory
+  c->Write();
+  TCanvas* c2 = trainer->PlotFunction();
+  c2->Write(); //also save the function plot
+  outroot->Close();
+  delete outroot;
+
+  //Write out the selection cuts along with info for that cut
+  ofstream outfile;
+  outfile.open ((outName+".txt").Data());
+  vector<TString> cutPath = trainer->cutPath_;
+  for(int i = 0; i < cutPath.size(); ++i) {
+    outfile << cutPath[i] << ", "
+            << trainer->functionVals_[i] << ", "
+            << trainer->sigEff_[i] << ", "
+            << trainer->bkgEff_[i]
+            << std::endl;
+  }
+  outfile.close();
+
+  //Remove from disk the temporary file
+  gSystem->Exec("rm TMP_train.root;");
+
+
   return trainer;
 }
