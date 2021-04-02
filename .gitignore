@@ -1,6 +1,11 @@
 *~
 \#*
 *.save
+*.log
+*.png
+*.pdf
+*.esp
+
 BaBar/BField/
 BaBar/BaBar/
 BaBar/BbrGeom/
