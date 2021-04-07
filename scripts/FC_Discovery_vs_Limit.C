@@ -100,7 +100,7 @@ void FC_Discovery_vs_Limit(double nsignal, double n_min, double n_max,
     if(Mode == 1 || Mode == 3) {
       gavgmu->Draw("P");
     }
-    if(Mode == 0 || Mode == 1 || Mode == 3) {
+    if(Mode == 0 || Mode == 3) {
       glimit->Draw("P");
     }
     if(Mode == 2 || Mode == 3 || Mode == 4) {
@@ -113,10 +113,10 @@ void FC_Discovery_vs_Limit(double nsignal, double n_min, double n_max,
         leg->AddEntry(gdiscover, Form("#mu(#tilde{#sigma} #geq 5)%s", (disc_scale < 1.) ? Form("*%.1f", disc_scale) : "" ), "L");
       if(Mode == 1 || Mode == 3)
         leg->AddEntry(gavgmu, Form("#mu(#bar{#sigma} = 5)%s", (disc_scale < 1.) ? Form("*%.1f", disc_scale) : "" ), "L");
-      if(Mode == 0 || Mode == 1 || Mode == 3 || Mode == 4)
-        leg->AddEntry(glimit, "#bar{#mu}(90% CL)", "L");
       if(Mode == 2 || Mode == 3 || Mode == 4)
         leg->AddEntry(gmedlim, "#tilde{#mu}(90% CL)", "L");
+      if(Mode == 0 || Mode == 3 || Mode == 4)
+        leg->AddEntry(glimit, "#bar{#mu}(90% CL)", "L");
       if(Mode == 1)
         leg->AddEntry(gavgsig, Form("#bar{#sigma}(#mu=%.1f)", nsignal), "L");
       leg->Draw();

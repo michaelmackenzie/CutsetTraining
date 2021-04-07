@@ -1,12 +1,13 @@
 int verbose_ = 1;
 
+
 void construct_confidence_interval(double mu_s, double mu_b, double alpha, double sigma, int& nmin_f, int& nmax_f) {
   if(sigma > 0.) {
     double p_onesided = ROOT::Math::gaussian_cdf(sigma, 1., 0.);
     alpha = 2.*p_onesided - 1.;
   }
   int n0 = mu_b+mu_s;
-  int nmin = max( 0, (int) (n0 - 10.*sqrt(n0)));
+  int nmin = 0;//max( 0, (int) (n0 - 10.*sqrt(n0)));
   int nmax = max(10, (int) (n0 + 10.*sqrt(n0)));
 
   double prob = 0.;
@@ -15,14 +16,16 @@ void construct_confidence_interval(double mu_s, double mu_b, double alpha, doubl
   while(prob < alpha) {
     double ratio(-1.);
     int nbest = -1;
-    double pbest(0.);
+    double pbest(0.), rbest(0.);
     if(nmin_f == nmin && nmin > 0) nmin = max(nmin-10, 0);
     if(nmax_f == nmax) nmax += 10;
     for(int n = nmin; n <= nmax; ++n) {
-      if(ns[n]) continue;
-      double mu_best = max(mu_b, n - mu_b);
+      if(ns.find(n) != ns.end()) continue;
+      double mu_best = (n < mu_b) ? mu_b : n;
       double p = ROOT::Math::poisson_pdf(n, mu_s+mu_b);
       double pb = ROOT::Math::poisson_pdf(n, mu_best);
+      if(verbose_ > 2) cout << "n = " << n << " mu_best = " << mu_best << " p_best = " << pb
+                            << " p_s+b = " << p << " R = " << p/pb << endl;
       if(ratio < p/pb) {ratio = p/pb; nbest = n; pbest=p;}
     }
     ns[nbest] = true;
@@ -40,18 +43,18 @@ void construct_confidence_interval(double mu_s, double mu_b, double alpha, doubl
 void construct_confidence_interval(double mu_s, double mu_b, double alpha = 0.9, double sigma = -1) {
   int nminf, nmaxf;
   construct_confidence_interval(mu_s, mu_b, alpha, sigma, nminf, nmaxf);
+  cout << "Interval = " << nminf << " - " << nmaxf << endl;
 }
 
-TCanvas* construct_confidence_interval() {
+TCanvas* construct_confidence_interval(double mu_b = 0.4, bool print = false) {
   double mu_s_min =  0.;
   double mu_s_max = 20.;
-  int nsteps = 100;
-  double mu_b = 0.4;
+  int nsteps = 500;
   double alpha = 0.9;
   double sigma = -1;
   double mus[nsteps+1], centers[nsteps+1], widths[nsteps+1], heights[nsteps+1];
   verbose_ = 0;
-  int n_obs = 4;
+  int n_obs = 0;
   double b_obs_min(10*n_obs), b_obs_max(-1);
   for(int istep = 0; istep <= nsteps; ++istep) {
     int n1, n2;
@@ -85,9 +88,54 @@ TCanvas* construct_confidence_interval() {
   gobs->SetLineColor(kRed);
   gobs->SetLineWidth(2);
   // gobs->Draw("E");
-
-  c->Print("figures/confidence_belt.png");
+  if(print)
+    c->Print("figures/confidence_belt.png");
 
   cout << "For an example " << n_obs << " events, the belt is " << b_obs_min << " - " << b_obs_max << endl;
   return c;
+}
+
+void plot_interval_construction(double mu_s = 0.5, double mu_b = 3., bool print = false) {
+  int n0 = mu_b+mu_s;
+  int nmin = 0;//max( 0, (int) (n0 - 10.*sqrt(n0)));
+  int nmax = max(10, (int) (n0 + 10.*sqrt(n0)));
+  TH1F* hmodel = new TH1F("hmodel", "hmodel", nmax, 0, nmax);
+  TH1F* hbest = new TH1F("hbest", "hbest", nmax, 0, nmax);
+  TH1F* hlhr = new TH1F("hlhr", "hlhr", nmax, 0, nmax);
+  for(int n = nmin; n < nmax; ++n) {
+    double mu_best = (n < mu_b) ? mu_b : n;
+    double p = ROOT::Math::poisson_pdf(n, mu_s+mu_b);
+    double pb = ROOT::Math::poisson_pdf(n, mu_best);
+    hmodel->Fill(n, p);
+    hbest->Fill(n,pb);
+    hlhr->Fill(n, p/pb);
+  }
+  gStyle->SetOptStat(0);
+  auto c = new TCanvas("c_single", "c_single", 1000, 700);
+  hmodel->SetLineColor(kRed);
+  hmodel->SetLineWidth(2);
+  hmodel->SetFillColor(kRed);
+  hmodel->SetFillStyle(3005);
+  hmodel->Draw("hist");
+  hmodel->SetTitle(Form("FC Ordering for #mu_{b} = %.2f #mu_{s} = %.2f", mu_b, mu_s));
+  hmodel->SetXTitle("N");
+  hmodel->SetAxisRange(1.e-4, 1.1, "Y");
+  hbest->SetLineWidth(2);
+  hbest->SetFillColor(kBlue);
+  hbest->SetFillStyle(3004);
+  hbest->Draw("same hist");
+  hlhr->SetLineWidth(2);
+  hlhr->SetLineColor(kMagenta);
+  hlhr->SetFillColor(kMagenta);
+  hlhr->SetFillStyle(3003);
+  hlhr->Draw("same hist");
+  hmodel->Draw("same hist");
+
+  TLegend* leg = new TLegend(0.6, 0.7, 0.9, 0.9);
+  leg->AddEntry(hmodel, "P(n | #mu_{s} + #mu_{b})");
+  leg->AddEntry(hbest , "P(n | #mu_{best})");
+  leg->AddEntry(hlhr  , "R");
+  leg->Draw();
+  if(print)
+    c->Print("figures/single_FC_interval_construction.png");
 }
